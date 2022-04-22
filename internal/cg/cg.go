@@ -23,6 +23,7 @@ import "C"
 import (
 	"errors"
 	"image"
+	"log"
 	"unsafe"
 
 	"github.com/suutaku/screenshot/internal/utils"
@@ -49,6 +50,9 @@ func (cg *CoreGraph) Capture() (*image.RGBA, error) {
 	var rect image.Rectangle
 	if cg.w < 1 || cg.h < 1 {
 		rect = cg.GetDisplayBounds(0)
+		log.Println(rect)
+		cg.w = rect.Dx()
+		cg.h = rect.Dy()
 	} else {
 		rect = image.Rect(0, 0, cg.w, cg.h)
 	}
@@ -61,20 +65,17 @@ func (cg *CoreGraph) Capture() (*image.RGBA, error) {
 	winBottomLeft := C.CGPointMake(C.CGFloat(cg.x), C.CGFloat(cg.y+cg.h))
 	cgBottomLeft := getCoreGraphicsCoordinateFromWindowsCoordinate(winBottomLeft, cgMainDisplayBounds)
 	cgCaptureBounds := C.CGRectMake(cgBottomLeft.x, cgBottomLeft.y, C.CGFloat(cg.w), C.CGFloat(cg.h))
-
 	ids := cg.activeDisplayList()
 
 	ctx := createBitmapContext(cg.w, cg.h, (*C.uint32_t)(unsafe.Pointer(&img.Pix[0])), img.Stride)
 	if ctx == 0 {
 		return nil, errors.New("cannot create bitmap context")
 	}
-
 	colorSpace := createColorspace()
 	if colorSpace == 0 {
 		return nil, errors.New("cannot create colorspace")
 	}
 	defer C.CGColorSpaceRelease(colorSpace)
-
 	for _, id := range ids {
 		cgBounds := getCoreGraphicsCoordinateOfDisplay(id)
 		cgIntersect := C.CGRectIntersection(cgBounds, cgCaptureBounds)
@@ -92,7 +93,6 @@ func (cg *CoreGraph) Capture() (*image.RGBA, error) {
 		if int(cgIntersect.size.height)%2 != 0 {
 			cgIntersect.size.height = C.CGFloat(int(cgIntersect.size.height) + 1)
 		}
-
 		diIntersectDisplayLocal := C.CGRectMake(cgIntersect.origin.x-cgBounds.origin.x,
 			cgBounds.origin.y+cgBounds.size.height-(cgIntersect.origin.y+cgIntersect.size.height),
 			cgIntersect.size.width, cgIntersect.size.height)

@@ -84,6 +84,8 @@ func (x11 *X11Window) Capture() (img *image.RGBA, err error) {
 		x11.intersect = wholeScreenBounds.Intersect(targetBounds)
 	} else {
 		x11.intersect = wholeScreenBounds
+		x11.w = wholeScreenBounds.Dx()
+		x11.h = wholeScreenBounds.Dy()
 	}
 	if x11.intersect.Empty() {
 		err = fmt.Errorf("select invalid range")

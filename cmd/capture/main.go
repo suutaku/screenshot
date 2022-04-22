@@ -8,7 +8,7 @@ import (
 
 func main() {
 	log.SetFlags(log.Lshortfile)
-	impl := screenshot.NewScreenshot(0, 0, 100, 100)
+	impl := screenshot.NewScreenshot(0, 0, 0, 0)
 	defer impl.Close()
 	for {
 		img, err := impl.Capture()

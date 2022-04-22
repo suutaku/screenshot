@@ -51,6 +51,8 @@ func (wn *WinNative) Capture() (*image.RGBA, error) {
 	var rect image.Rectangle
 	if wn.w < 1 || wn.h < 1 {
 		rect = wn.GetDisplayBounds(0)
+		wn.w = rect.Dx()
+		wn.y = rect.Dy()
 	} else {
 		rect = image.Rect(0, 0, wn.w, wn.h)
 	}
