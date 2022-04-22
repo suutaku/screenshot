@@ -55,24 +55,18 @@ func NewX11Window(x, y, w, h int) *X11Window {
 	}
 
 	screen := xproto.Setup(c).DefaultScreen(c)
-	wholeScreenBounds := image.Rect(0, 0, int(screen.WidthInPixels), int(screen.HeightInPixels))
-	targetBounds := image.Rect(x+x0, y+y0, x+x0+w, y+y0+h)
-	intersect := wholeScreenBounds.Intersect(targetBounds)
-	log.Printf("%#v\n", intersect)
-	log.Println(intersect.Empty())
 
 	return &X11Window{
-		c:         c,
-		useShm:    useShm,
-		intersect: intersect,
-		screen:    screen,
-		x:         x,
-		x0:        x0,
-		y:         y,
-		y0:        y0,
-		reply:     reply,
-		w:         w,
-		h:         h,
+		c:      c,
+		useShm: useShm,
+		screen: screen,
+		x:      x,
+		x0:     x0,
+		y:      y,
+		y0:     y0,
+		reply:  reply,
+		w:      w,
+		h:      h,
 	}
 }
 
@@ -84,6 +78,13 @@ func (x11 *X11Window) Close() {
 }
 
 func (x11 *X11Window) Capture() (img *image.RGBA, err error) {
+	wholeScreenBounds := image.Rect(0, 0, int(x11.screen.WidthInPixels), int(x11.screen.HeightInPixels))
+	if x11.w > 1 && x11.h > 1 {
+		targetBounds := image.Rect(x11.x+x11.x0, x11.y+x11.y0, x11.x+x11.x0+x11.w, x11.y+x11.y0+x11.h)
+		x11.intersect = wholeScreenBounds.Intersect(targetBounds)
+	} else {
+		x11.intersect = wholeScreenBounds
+	}
 	if x11.intersect.Empty() {
 		err = fmt.Errorf("select invalid range")
 		return

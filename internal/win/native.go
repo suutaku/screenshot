@@ -48,7 +48,13 @@ func NewWinNative(x, y, w, h int) *WinNative {
 }
 
 func (wn *WinNative) Capture() (*image.RGBA, error) {
-	rect := image.Rect(0, 0, wn.w, wn.h)
+	var rect image.Rectangle
+	if wn.w < 1 || wn.h < 1 {
+		rect = wn.GetDisplayBounds(0)
+	} else {
+		rect = image.Rect(0, 0, wn.w, wn.h)
+	}
+
 	img, err := utils.CreateImage(rect)
 	if err != nil {
 		return nil, err

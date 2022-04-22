@@ -36,9 +36,6 @@ type CoreGraph struct {
 }
 
 func NewCoreGraph(x, y, w, h int) *CoreGraph {
-	if w <= 0 || h <= 0 {
-		panic("invalid image size")
-	}
 	return &CoreGraph{
 		x: x,
 		y: y,
@@ -49,7 +46,12 @@ func NewCoreGraph(x, y, w, h int) *CoreGraph {
 
 func (cg *CoreGraph) Close() {}
 func (cg *CoreGraph) Capture() (*image.RGBA, error) {
-	rect := image.Rect(0, 0, cg.w, cg.h)
+	var rect image.Rectangle
+	if cg.w < 1 || cg.h < 1 {
+		rect = cg.GetDisplayBounds(0)
+	} else {
+		rect = image.Rect(0, 0, cg.w, cg.h)
+	}
 	img, err := utils.CreateImage(rect)
 	if err != nil {
 		return nil, err
