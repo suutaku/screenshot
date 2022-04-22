@@ -5,7 +5,7 @@ import (
 )
 
 type Screenshot struct {
-	*x11.X11Window
+	*cg.CoreGraph
 }
 
 func NewScreenshot(x, y, w, h int) *Screenshot {

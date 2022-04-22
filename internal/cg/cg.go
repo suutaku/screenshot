@@ -56,13 +56,13 @@ func (cg *CoreGraph) Capture() (*image.RGBA, error) {
 	}
 	cgMainDisplayBounds := getCoreGraphicsCoordinateOfDisplay(C.CGMainDisplayID())
 
-	winBottomLeft := C.CGPointMake(C.CGFloat(cg.x), C.CGFloat(cg.y+height))
+	winBottomLeft := C.CGPointMake(C.CGFloat(cg.x), C.CGFloat(cg.y+cg.h))
 	cgBottomLeft := getCoreGraphicsCoordinateFromWindowsCoordinate(winBottomLeft, cgMainDisplayBounds)
-	cgCaptureBounds := C.CGRectMake(cgBottomLeft.x, cgBottomLeft.y, C.CGFloat(width), C.CGFloat(height))
+	cgCaptureBounds := C.CGRectMake(cgBottomLeft.x, cgBottomLeft.y, C.CGFloat(cg.w), C.CGFloat(cg.h))
 
-	ids := activeDisplayList()
+	ids := cg.activeDisplayList()
 
-	ctx := createBitmapContext(width, height, (*C.uint32_t)(unsafe.Pointer(&img.Pix[0])), img.Stride)
+	ctx := createBitmapContext(cg.w, cg.h, (*C.uint32_t)(unsafe.Pointer(&img.Pix[0])), img.Stride)
 	if ctx == 0 {
 		return nil, errors.New("cannot create bitmap context")
 	}
@@ -126,7 +126,7 @@ func (cg *CoreGraph) Capture() (*image.RGBA, error) {
 	return img, nil
 }
 func (cg *CoreGraph) GetDisplayBounds(num int) image.Rectangle {
-	id := getDisplayId(num)
+	id := cg.getDisplayId(num)
 	main := C.CGMainDisplayID()
 
 	var rect image.Rectangle
@@ -154,12 +154,12 @@ func (cg *CoreGraph) GetDisplayNumber() int {
 	}
 }
 
-func getDisplayId(displayIndex int) C.CGDirectDisplayID {
+func (cg *CoreGraph) getDisplayId(displayIndex int) C.CGDirectDisplayID {
 	main := C.CGMainDisplayID()
 	if displayIndex == 0 {
 		return main
 	} else {
-		n := NumActiveDisplays()
+		n := cg.GetDisplayNumber()
 		ids := make([]C.CGDirectDisplayID, n)
 		if C.CGGetActiveDisplayList(C.uint32_t(n), (*C.CGDirectDisplayID)(unsafe.Pointer(&ids[0])), nil) != C.kCGErrorSuccess {
 			return 0
@@ -210,8 +210,8 @@ func createColorspace() C.CGColorSpaceRef {
 	return C.CGColorSpaceCreateWithName(C.kCGColorSpaceSRGB)
 }
 
-func activeDisplayList() []C.CGDirectDisplayID {
-	count := C.uint32_t(NumActiveDisplays())
+func (cg *CoreGraph) activeDisplayList() []C.CGDirectDisplayID {
+	count := C.uint32_t(cg.GetDisplayNumber())
 	ret := make([]C.CGDirectDisplayID, count)
 	if count > 0 && C.CGGetActiveDisplayList(count, (*C.CGDirectDisplayID)(unsafe.Pointer(&ret[0])), nil) == C.kCGErrorSuccess {
 		return ret

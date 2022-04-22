@@ -5,7 +5,7 @@ import (
 )
 
 type Screenshot struct {
-	*x11.X11Window
+	*win.WinNative
 }
 
 func NewScreenshot(x, y, w, h int) *Screenshot {
