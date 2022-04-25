@@ -3,7 +3,6 @@ package x11
 import (
 	"fmt"
 	"image"
-	"image/color"
 	"log"
 
 	"github.com/gen2brain/shm"
@@ -26,6 +25,10 @@ type X11Window struct {
 	reply     *xinerama.QueryScreensReply
 	w         int
 	h         int
+	img       *image.RGBA
+	seg       *mshm.Seg
+	data      []byte
+	shmId     int
 }
 
 func NewX11Window(x, y, w, h int) *X11Window {
@@ -51,23 +54,66 @@ func NewX11Window(x, y, w, h int) *X11Window {
 	useShm := true
 	err = mshm.Init(c)
 	if err != nil {
+		fmt.Println("not use shm")
 		useShm = false
 	}
 
 	screen := xproto.Setup(c).DefaultScreen(c)
-
-	return &X11Window{
-		c:      c,
-		useShm: useShm,
-		screen: screen,
-		x:      x,
-		x0:     x0,
-		y:      y,
-		y0:     y0,
-		reply:  reply,
-		w:      w,
-		h:      h,
+	var intersect image.Rectangle
+	wholeScreenBounds := image.Rect(0, 0, int(screen.WidthInPixels), int(screen.HeightInPixels))
+	if w > 1 && h > 1 {
+		targetBounds := image.Rect(x+x0, y+y0, x+x0+w, y+y0+h)
+		intersect = wholeScreenBounds.Intersect(targetBounds)
+	} else {
+		intersect = wholeScreenBounds
+		w = wholeScreenBounds.Dx()
+		h = wholeScreenBounds.Dy()
 	}
+	if intersect.Empty() {
+		err = fmt.Errorf("select invalid range")
+		panic(err)
+	}
+	rect := image.Rect(0, 0, w, h)
+	img, err := utils.CreateImage(rect)
+	if err != nil {
+		panic(err)
+	}
+	ret := &X11Window{
+		c:         c,
+		useShm:    useShm,
+		screen:    screen,
+		x:         x,
+		x0:        x0,
+		y:         y,
+		y0:        y0,
+		reply:     reply,
+		w:         w,
+		h:         h,
+		img:       img,
+		intersect: intersect,
+	}
+
+	if useShm {
+		shmSize := intersect.Dx() * intersect.Dy() * 4
+		ret.shmId, err = shm.Get(shm.IPC_PRIVATE, shmSize, shm.IPC_CREAT|0777)
+		if err != nil {
+			panic(err)
+
+		}
+
+		seg, err := mshm.NewSegId(c)
+		if err != nil {
+			panic(err)
+		}
+		ret.seg = &seg
+		ret.data, err = shm.At(ret.shmId, 0, 0)
+		if err != nil {
+			panic(err)
+		}
+
+		mshm.Attach(c, seg, uint32(ret.shmId), false)
+	}
+	return ret
 }
 
 func (x11 *X11Window) Close() {
@@ -75,59 +121,30 @@ func (x11 *X11Window) Close() {
 		log.Println("close conn")
 		x11.c.Close()
 	}
+	if x11.useShm {
+		mshm.Detach(x11.c, *x11.seg)
+		shm.Rm(x11.shmId)
+		shm.Dt(x11.data)
+	}
+}
+
+func (x11 *X11Window) toRGBA() *image.RGBA {
+	for i := 0; i < len(x11.data); i += 4 {
+		x11.img.Pix[i] = x11.data[i+2]
+		x11.img.Pix[i+1] = x11.data[i+1]
+		x11.img.Pix[i+2] = x11.data[i]
+		x11.img.Pix[i+3] = 255
+	}
+	return x11.img
 }
 
 func (x11 *X11Window) Capture() (img *image.RGBA, err error) {
-	wholeScreenBounds := image.Rect(0, 0, int(x11.screen.WidthInPixels), int(x11.screen.HeightInPixels))
-	if x11.w > 1 && x11.h > 1 {
-		targetBounds := image.Rect(x11.x+x11.x0, x11.y+x11.y0, x11.x+x11.x0+x11.w, x11.y+x11.y0+x11.h)
-		x11.intersect = wholeScreenBounds.Intersect(targetBounds)
-	} else {
-		x11.intersect = wholeScreenBounds
-		x11.w = wholeScreenBounds.Dx()
-		x11.h = wholeScreenBounds.Dy()
-	}
-	if x11.intersect.Empty() {
-		err = fmt.Errorf("select invalid range")
-		return
-	}
 
-	var data []byte
-	rect := image.Rect(0, 0, x11.w, x11.h)
-	img, err = utils.CreateImage(rect)
-	if err != nil {
-		return nil, err
-	}
 	if x11.useShm {
-		shmSize := x11.intersect.Dx() * x11.intersect.Dy() * 4
-		shmId, err := shm.Get(shm.IPC_PRIVATE, shmSize, shm.IPC_CREAT|0777)
-		if err != nil {
-			log.Println(err)
-			return nil, err
-		}
-
-		seg, err := mshm.NewSegId(x11.c)
-		if err != nil {
-			log.Println(err)
-			return nil, err
-		}
-
-		data, err = shm.At(shmId, 0, 0)
-		if err != nil {
-			log.Println(err)
-			return nil, err
-		}
-
-		mshm.Attach(x11.c, seg, uint32(shmId), false)
-
-		defer mshm.Detach(x11.c, seg)
-		defer shm.Rm(shmId)
-		defer shm.Dt(data)
-
 		_, err = mshm.GetImage(x11.c, xproto.Drawable(x11.screen.Root),
 			int16(x11.intersect.Min.X), int16(x11.intersect.Min.Y),
 			uint16(x11.intersect.Dx()), uint16(x11.intersect.Dy()), 0xffffffff,
-			byte(xproto.ImageFormatZPixmap), seg, 0).Reply()
+			byte(xproto.ImageFormatZPixmap), *x11.seg, 0).Reply()
 		if err != nil {
 			log.Println(err)
 			return nil, err
@@ -141,20 +158,10 @@ func (x11 *X11Window) Capture() (img *image.RGBA, err error) {
 			return nil, err
 		}
 
-		data = xImg.Data
-	}
-	offset := 0
-	for iy := x11.intersect.Min.Y; iy < x11.intersect.Max.Y; iy++ {
-		for ix := x11.intersect.Min.X; ix < x11.intersect.Max.X; ix++ {
-			r := data[offset+2]
-			g := data[offset+1]
-			b := data[offset]
-			img.SetRGBA(ix-(x11.x+x11.x0), iy-(x11.y+x11.y0), color.RGBA{r, g, b, 255})
-			offset += 4
-		}
+		x11.data = xImg.Data
 	}
 
-	return img, err
+	return x11.toRGBA(), err
 }
 
 func (x11 *X11Window) GetDisplayNumber() int {
